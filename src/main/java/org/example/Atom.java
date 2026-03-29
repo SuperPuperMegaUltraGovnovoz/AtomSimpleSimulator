@@ -15,7 +15,7 @@ public class Atom {
         this.radius = (int)radius;
         this.color = color;
         this.force = new Vector2().x(0).y(0);
-        this.mass = mass;
+        this.mass = 1.0f;
         this.velocity = new Vector2().x(0).y(0);
     }
 
@@ -30,70 +30,99 @@ public class Atom {
         float top = radius;
         float bottom = screenHeight - radius;
 
-        // Левая стена
         if (position.x() < left) {
             float penetration = left - position.x();
-            float wallForce = stiffness * penetration * penetration;
+            float wallForce = stiffness * penetration; // Линейная сила
             force.x(force.x() + wallForce);
-        }
-        // Правая стена
-        else if (position.x() > right) {
+        } else if (position.x() > right) {
             float penetration = position.x() - right;
-            float wallForce = stiffness * penetration * penetration;
+            float wallForce = stiffness * penetration;
             force.x(force.x() - wallForce);
         }
 
-        // Верхняя стена
         if (position.y() < top) {
             float penetration = top - position.y();
-            float wallForce = stiffness * penetration * penetration;
+            float wallForce = stiffness * penetration;
             force.y(force.y() + wallForce);
-        }
-        // Нижняя стена
-        else if (position.y() > bottom) {
+        } else if (position.y() > bottom) {
             float penetration = position.y() - bottom;
-            float wallForce = stiffness * penetration * penetration;
+            float wallForce = stiffness * penetration;
             force.y(force.y() - wallForce);
         }
     }
 
-    public static void LenJons(Atom atom, Atom atom2){
-        Vector2 rVec = Vector2Subtract(atom.position, atom2.position);
 
-        float r = Vector2Length(rVec);
-        if (r < 0.1f) r = 0.1f;
-        Vector2 direction = Vector2Normalize(rVec);
+    public static void LenJons(Atom atom1, Atom atom2){
+        Vector2 rVec = Vector2Subtract(atom2.position, atom1.position);
+        float rSquared = rVec.x() * rVec.x() + rVec.y() * rVec.y();
 
-        float minDist = atom.radius * 2 * 1.1f; // С небольшим запасом
-        if (r < minDist) {
-            // Раздвигаем частицы
-            Vector2 correction = Vector2Scale(direction, (minDist - r) * 0.5f);
-            atom.position = Vector2Add(atom.position, correction);
-            atom2.position = Vector2Subtract(atom2.position, correction);
+        // Проверка на слишком малое расстояние (избегаем деления на ноль)
+        if (rSquared < 0.25f) {
+            rSquared = 0.25f;
+            float r = 0.5f;
+            Vector2 direction = Vector2Normalize(rVec);
+
+            // Отталкивание при слишком близком расстоянии
+            float forceMagnitude = 1000.0f; // Максимальная сила отталкивания
+
+            atom1.force.x(atom1.force.x() + forceMagnitude * direction.x());
+            atom1.force.y(atom1.force.y() + forceMagnitude * direction.y());
+            atom2.force.x(atom2.force.x() - forceMagnitude * direction.x());
+            atom2.force.y(atom2.force.y() - forceMagnitude * direction.y());
+            return;
         }
 
+        float r = (float) Math.sqrt(rSquared);
+        Vector2 direction = Vector2Scale(rVec, 1.0f / r);
 
-        float forceMagnitude = (4*1.0f * ((float)Math.pow((1.5f / r), 12) - (float) Math.pow((1.5f / r),6)));
+        float sigma = 1.5f;
+        float epsilon = 0.1f; // Уменьшено для стабильности
 
-        atom.force.x(atom.force.x() + forceMagnitude * direction.x());
-        atom.force.y(atom.force.y() + forceMagnitude * direction.y());
+        float sigmaOverR = sigma / r;
+        float sigmaOverRPow6 = (float) Math.pow(sigmaOverR, 6);
+        float sigmaOverRPow12 = sigmaOverRPow6 * sigmaOverRPow6;
+
+        // Формула Леннарда-Джонса с ограничением
+        float forceMagnitude = (24.0f * epsilon / r) * (2.0f * sigmaOverRPow12 - sigmaOverRPow6);
+
+        // Ограничение максимальной силы
+        float maxForce = 500.0f;
+        if (Math.abs(forceMagnitude) > maxForce) {
+            forceMagnitude = Math.signum(forceMagnitude) * maxForce;
+        }
+
+        atom1.force.x(atom1.force.x() + forceMagnitude * direction.x());
+        atom1.force.y(atom1.force.y() + forceMagnitude * direction.y());
         atom2.force.x(atom2.force.x() - forceMagnitude * direction.x());
         atom2.force.y(atom2.force.y() - forceMagnitude * direction.y());
     }
 
     static void UpdateAtomSymplectic(Atom atom, float dt) {
+        // Ограничение максимальной скорости
+        float maxSpeed = 10.0f;
+        float speed = Vector2Length(atom.velocity);
+        if (speed > maxSpeed) {
+            atom.velocity = Vector2Scale(Vector2Normalize(atom.velocity), maxSpeed);
+        }
+
         Vector2 acceleration = new Vector2()
                 .x(atom.force.x() / atom.mass)
                 .y(atom.force.y() / atom.mass);
 
+        // Полунеявный метод Эйлера (более стабильный)
         atom.velocity.x(atom.velocity.x() + acceleration.x() * dt);
         atom.velocity.y(atom.velocity.y() + acceleration.y() * dt);
+
+        // Слабое демпфирование
+        float damping = 0.995f;
+        atom.velocity.x(atom.velocity.x() * damping);
+        atom.velocity.y(atom.velocity.y() * damping);
 
         atom.position.x(atom.position.x() + atom.velocity.x() * dt);
         atom.position.y(atom.position.y() + atom.velocity.y() * dt);
     }
 
-    public static void SimulateAtoms(Atom[] atoms, float dt, float screenWidth, float screenHeight) {
+    public static void SimulateAtoms(Atom[] atoms, float dt, float screenWidth, float screenHeight, int countObjects) {
         int n = atoms.length;
 
         // Шаг 1: Сброс сил для всех частиц
@@ -108,12 +137,13 @@ public class Atom {
             }
         }
 
-        float stiffness = 500.0f; // Жёсткость границ (подберите под свою симуляцию)
+        // Шаг 3: Силы от границ экрана
+        float stiffness = 80.0f; // Уменьшено для плавности
         for (Atom a : atoms) {
             a.ApplyWallForces(screenWidth, screenHeight, stiffness);
         }
 
-        // Шаг 3: Обновление позиций и скоростей каждой частицы
+        // Шаг 4: Обновление позиций и скоростей
         for (Atom a : atoms) {
             UpdateAtomSymplectic(a, dt);
         }
