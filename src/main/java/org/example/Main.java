@@ -14,10 +14,10 @@ public class Main {
         SetTargetFPS(-1);
 
         Rectangle world = new Rectangle().x(300).y(300).width(40).height(40);
-        Object object = new Object((int)world.x(), (int)world.y(), 90, 20);
+        Object object = new Object((int)world.x(), (int)world.y(), 150, 20);
 
         Camera2D camera = new Camera2D();
-        camera.target(new Vector2().x(world.x() + 20).y(world.y() - 60));
+        camera.target(new Vector2().x(world.x()).y(world.y() - 60));
         camera.offset(new Vector2().x(screenWidth1/2).y(screenHeight1/2));
         camera.rotation(0.0f);
         camera.zoom(1.0f);
@@ -29,7 +29,7 @@ public class Main {
         Player player = new Player((int)camera.target().x(), (int)camera.target().y(), 30, 40, false);
 
         while (!WindowShouldClose()) {
-            if(player.onFoor){
+            if(player.onFloor){
                 velosityY1 = 0;
             }else{velosityY1 = 0.2f;}
             if(player.CollisionWithUp){
@@ -42,19 +42,19 @@ public class Main {
                 velosityX1 = 0;
             }else{velosityX1 = 0.2f;}
 
-            if(player.onFoor) {
+            //if(player.onFloor) {
                 if (IsKeyDown(KEY_W)) {
                     camera.target().y(camera.target().y() + (-velosityY) * GetFrameTime() * 1000);
                 }
-            }
+            //}
 
             if (IsKeyDown(KEY_S)) {
                 camera.target().y(camera.target().y() + velosityY1 * GetFrameTime() * 1000);
             }
 
-            if(!player.onFoor){
-                camera.target().y(camera.target().y() + 0.1f * GetFrameTime() * 1000);
-            }
+            //if(!player.onFloor){
+            //    camera.target().y(camera.target().y() + 0.1f * GetFrameTime() * 1000);
+            //}
 
             if (IsKeyDown(KEY_A)) {
                 camera.target().x(camera.target().x() + (-velosityX) * GetFrameTime() * 1000);
