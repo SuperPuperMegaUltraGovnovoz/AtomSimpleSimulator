@@ -14,7 +14,10 @@ public class Main {
         int tgFPS = 60;
 
         Rectangle world = new Rectangle().x(300).y(300).width(40).height(40);
-        Object object = new Object((int)world.x(), (int)world.y(), 40 * 1, 40 * 1);
+        Object[] object = new Object[2];
+        object[0] = new Object((int)world.x(), (int)world.y() - 115, 40 * 3, 20 * 1);
+        object[1] = new Object((int)world.x(), (int)world.y(), 40 * 3, 40 * 1);
+        //object[2] = new Object((int)world.x(), (int)world.y() - 115, 40 * 3, 20 * 1);
 
         Camera2D camera = new Camera2D();
         camera.target(new Vector2().x(world.x() + 60).y(world.y() - 60));
@@ -25,8 +28,9 @@ public class Main {
         float velosityX1 = 0f;
         float velosityY = 0f;;
         float velosityY1 = 0f;
+        boolean CollisionWithUp = false;
 
-        Player player = new Player((int)camera.target().x(), (int)camera.target().y(), 30 * 1, 40 * 1, false);
+        Player player = new Player((int)camera.target().x(), (int)camera.target().y() - 300, 30 * 1, 40 * 1, false);
 
         while (!WindowShouldClose()) {
             SetTargetFPS(tgFPS);
@@ -34,19 +38,20 @@ public class Main {
             if(IsKeyDown(KEY_TWO)){tgFPS = 60;}
 
             //столкновение
-            Collision.collision(player, object);
+            for(int i = 0; i < object.length; i++){
+            Collision.collision(player, object[i]);}
 
             if(!player.onFloor){
-                velosityY = velosityY - 0.01f * GetFrameTime() * 50; velosityY = Math.max(velosityY, -0.4f);
+                velosityY = velosityY - 0.01f * GetFrameTime() * 50;// velosityY = Math.max(velosityY, -0.4f);
                 camera.target().y(camera.target().y() + (-velosityY) * GetFrameTime() * 500);
             }
 
             if(player.onFloor) {
-                if(player.CollisionWithUp) {
-                    velosityY = 0f;
-                }
                 if (IsKeyDown(KEY_W)) {
-                    velosityY = 0.2f;
+                    if(player.CollisionWithUp) {
+                        velosityY = 0f;
+                    }else{velosityY = 0.2f;}
+                    //velosityY = 0.2f;
                     camera.target().y(camera.target().y() + (-velosityY) * GetFrameTime() * 500);
                 }
             }
@@ -57,8 +62,6 @@ public class Main {
                 }else{velosityY1 = 0.2f;}
                 camera.target().y(camera.target().y() + velosityY1 * GetFrameTime() * 500);
             }
-
-
 
             if (IsKeyDown(KEY_A)) {
                 if(player.CollisionWithLeft){
@@ -84,7 +87,9 @@ public class Main {
             ClearBackground(RAYWHITE);
             BeginMode2D(camera);
 
-            DrawRectangle(object.x, object.y, object.width, object.height, VIOLET);
+            for (int i = 0; i < object.length; i++){
+                DrawRectangle(object[i].x, object[i].y, object[i].width, object[i].height, VIOLET);
+            }
 
             DrawEllipse(player.x, player.y, player.width, player.height, RED);
 
@@ -99,6 +104,7 @@ public class Main {
             DrawText("Speed " + ((velosityY + velosityY1 + velosityX1 + velosityX)/4),20, 140, 20, GREEN);
             EndDrawing();
 
+            Collision.disCollision(player);
         }
         CloseWindow();
     }
