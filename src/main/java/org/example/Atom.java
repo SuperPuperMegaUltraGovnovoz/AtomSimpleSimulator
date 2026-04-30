@@ -13,9 +13,13 @@ public class Atom {
     public static final float SIGMA = 40.0f;
     public static final float EPSILON = 10.0f;
     public static final float MIN_DIST = 1.0f;
-    public static final float GRAVITY = 0.5f;
-    public static final float CUTOFF = 150.0f;      // расстояние, дальше которого нет взаимодействия
+    public static final float CUTOFF = 150.0f;
     public static final float CUTOFF_SQ = CUTOFF * CUTOFF;
+
+    // Параметры силы от мыши
+    public static final float MOUSE_FORCE = 15000.0f;   // амплитуда отталкивания
+    public static final float MOUSE_RADIUS = 250.0f;   // радиус действия
+    public static final float MOUSE_RADIUS_SQ = MOUSE_RADIUS * MOUSE_RADIUS;
 
     public Atom(float x, float y, float radius, Color color) {
         this.position = new Vector2().x(x).y(y);
@@ -59,7 +63,7 @@ public class Atom {
         float dy = atom1.position.y() - atom2.position.y();
         float rSq = dx * dx + dy * dy;
 
-        if (rSq > CUTOFF_SQ) return;          // нет взаимодействия
+        if (rSq > CUTOFF_SQ) return;
 
         float r = (float) Math.sqrt(rSq);
         float invR = 1.0f / r;
@@ -94,7 +98,6 @@ public class Atom {
     }
 
     static void UpdateAtom(Atom atom, float dt) {
-        // Простое обновление без создания объектов
         float ax = atom.force.x() / atom.mass;
         float ay = atom.force.y() / atom.mass;
 
@@ -104,9 +107,11 @@ public class Atom {
         atom.position.y(atom.position.y() + atom.velocity.y() * dt);
     }
 
-    public static void SimulateAtoms(Atom[] atoms, float dt, float screenWidth, float screenHeight) {
+    // Новая версия симуляции с поддержкой мыши
+    public static void SimulateAtoms(Atom[] atoms, float dt, float screenWidth, float screenHeight,
+                                     float mouseX, float mouseY, boolean mouseDown) {
         int n = atoms.length;
-        int subSteps = 2;   // уменьшили до 2х
+        int subSteps = 2;
         float dtSub = dt / subSteps;
 
         for (int step = 0; step < subSteps; step++) {
@@ -125,9 +130,26 @@ public class Atom {
                 a.ApplyWallForces(screenWidth, screenHeight, stiffness);
             }
 
-            // Гравитация
-            for (Atom a : atoms) {
-                a.force.y(a.force.y() + GRAVITY * a.mass);
+            // Сила от мыши (только если нажата)
+            if (mouseDown) {
+                for (Atom a : atoms) {
+                    float dx = a.position.x() - mouseX;
+                    float dy = a.position.y() - mouseY;
+                    float distSq = dx * dx + dy * dy;
+
+                    if (distSq < MOUSE_RADIUS_SQ) {
+                        float dist = (float) Math.sqrt(distSq);
+                        if (dist < 1.0f) dist = 1.0f;  // избегаем деления на ноль
+                        float invDist = 1.0f / dist;
+                        float unitX = dx * invDist;
+                        float unitY = dy * invDist;
+
+                        // Сила отталкивания: обратно пропорциональна расстоянию (можно сделать обратно квадрату)
+                        float forceMag = MOUSE_FORCE / (dist * dist);  // или MOUSE_FORCE / dist для более мягкого спада
+                        a.force.x(a.force.x() + forceMag * unitX);
+                        a.force.y(a.force.y() + forceMag * unitY);
+                    }
+                }
             }
 
             // Интегрирование
@@ -135,6 +157,11 @@ public class Atom {
                 UpdateAtom(a, dtSub);
             }
         }
+    }
+
+    // Старый метод без мыши оставлен для совместимости (если нужен)
+    public static void SimulateAtoms(Atom[] atoms, float dt, float screenWidth, float screenHeight) {
+        SimulateAtoms(atoms, dt, screenWidth, screenHeight, 0, 0, false);
     }
 
     public static float CalculateKineticEnergy(Atom[] atoms) {
