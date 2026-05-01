@@ -10,16 +10,13 @@ public class Atom {
     float mass;
     public Vector2 velocity;
 
-    public static final float SIGMA = 40.0f;
-    public static final float EPSILON = 10.0f;
-    public static final float MIN_DIST = 1.0f;
-    public static final float CUTOFF = 150.0f;
-    public static final float CUTOFF_SQ = CUTOFF * CUTOFF;
+    public static AtomPreset currentPreset = AtomPreset.HYDROGEN;
 
-    // Параметры силы от мыши
-    public static final float MOUSE_FORCE = 15000.0f;   // амплитуда отталкивания
-    public static final float MOUSE_RADIUS = 250.0f;   // радиус действия
+    public static final float MOUSE_FORCE = 15000.0f;
+    public static final float MOUSE_RADIUS = 250.0f;
     public static final float MOUSE_RADIUS_SQ = MOUSE_RADIUS * MOUSE_RADIUS;
+
+    public static final float WALL_STIFFNESS = 500.0f;  // увеличена для удержания частиц
 
     public Atom(float x, float y, float radius, Color color) {
         this.position = new Vector2().x(x).y(y);
@@ -63,14 +60,16 @@ public class Atom {
         float dy = atom1.position.y() - atom2.position.y();
         float rSq = dx * dx + dy * dy;
 
-        if (rSq > CUTOFF_SQ) return;
+        float cutoffSq = currentPreset.cutoff * currentPreset.cutoff;
+        if (rSq > cutoffSq) return;
 
         float r = (float) Math.sqrt(rSq);
         float invR = 1.0f / r;
         float unitX, unitY;
 
-        if (r < MIN_DIST) {
-            r = MIN_DIST;
+        float minDist = currentPreset.minDist;
+        if (r < minDist) {
+            r = minDist;
             invR = 1.0f / r;
             if (rSq < 1e-6f) {
                 unitX = 1.0f; unitY = 0.0f;
@@ -83,12 +82,14 @@ public class Atom {
             unitY = dy * invR;
         }
 
-        float sigmaOverR = SIGMA * invR;
+        float sigma = currentPreset.sigma;
+        float epsilon = currentPreset.epsilon;
+        float sigmaOverR = sigma * invR;
         float sigmaOverR2 = sigmaOverR * sigmaOverR;
         float sigmaOverR6 = sigmaOverR2 * sigmaOverR2 * sigmaOverR2;
         float sigmaOverR12 = sigmaOverR6 * sigmaOverR6;
 
-        float forceMagnitude = 24.0f * EPSILON * invR *
+        float forceMagnitude = 24.0f * epsilon * invR *
                 (2.0f * sigmaOverR12 - sigmaOverR6);
 
         atom1.force.x(atom1.force.x() + forceMagnitude * unitX);
@@ -103,11 +104,16 @@ public class Atom {
 
         atom.velocity.x(atom.velocity.x() + ax * dt);
         atom.velocity.y(atom.velocity.y() + ay * dt);
+
+        // Более сильное трение для стабилизации
+        float damping = 0.998f;
+        atom.velocity.x(atom.velocity.x() * damping);
+        atom.velocity.y(atom.velocity.y() * damping);
+
         atom.position.x(atom.position.x() + atom.velocity.x() * dt);
         atom.position.y(atom.position.y() + atom.velocity.y() * dt);
     }
 
-    // Новая версия симуляции с поддержкой мыши
     public static void SimulateAtoms(Atom[] atoms, float dt, float screenWidth, float screenHeight,
                                      float mouseX, float mouseY, boolean mouseDown) {
         int n = atoms.length;
@@ -117,20 +123,16 @@ public class Atom {
         for (int step = 0; step < subSteps; step++) {
             for (Atom a : atoms) a.ResetForce();
 
-            // Парные взаимодействия
             for (int i = 0; i < n; i++) {
                 for (int j = i + 1; j < n; j++) {
                     LennardJones(atoms[i], atoms[j]);
                 }
             }
 
-            // Стенки
-            float stiffness = 80.0f;
             for (Atom a : atoms) {
-                a.ApplyWallForces(screenWidth, screenHeight, stiffness);
+                a.ApplyWallForces(screenWidth, screenHeight, WALL_STIFFNESS);
             }
 
-            // Сила от мыши (только если нажата)
             if (mouseDown) {
                 for (Atom a : atoms) {
                     float dx = a.position.x() - mouseX;
@@ -139,27 +141,24 @@ public class Atom {
 
                     if (distSq < MOUSE_RADIUS_SQ) {
                         float dist = (float) Math.sqrt(distSq);
-                        if (dist < 1.0f) dist = 1.0f;  // избегаем деления на ноль
+                        if (dist < 1.0f) dist = 1.0f;
                         float invDist = 1.0f / dist;
                         float unitX = dx * invDist;
                         float unitY = dy * invDist;
 
-                        // Сила отталкивания: обратно пропорциональна расстоянию (можно сделать обратно квадрату)
-                        float forceMag = MOUSE_FORCE / (dist * dist);  // или MOUSE_FORCE / dist для более мягкого спада
+                        float forceMag = MOUSE_FORCE / (dist * dist);
                         a.force.x(a.force.x() + forceMag * unitX);
                         a.force.y(a.force.y() + forceMag * unitY);
                     }
                 }
             }
 
-            // Интегрирование
             for (Atom a : atoms) {
                 UpdateAtom(a, dtSub);
             }
         }
     }
 
-    // Старый метод без мыши оставлен для совместимости (если нужен)
     public static void SimulateAtoms(Atom[] atoms, float dt, float screenWidth, float screenHeight) {
         SimulateAtoms(atoms, dt, screenWidth, screenHeight, 0, 0, false);
     }
@@ -177,22 +176,27 @@ public class Atom {
     public static float CalculatePotentialEnergy(Atom[] atoms, float screenWidth, float screenHeight, float wallStiffness) {
         float potentialPairs = 0.0f;
         int n = atoms.length;
+        float sigma = currentPreset.sigma;
+        float epsilon = currentPreset.epsilon;
+        float cutoffSq = currentPreset.cutoff * currentPreset.cutoff;
+        float minDist = currentPreset.minDist;
+
         for (int i = 0; i < n; i++) {
             for (int j = i + 1; j < n; j++) {
                 float dx = atoms[j].position.x() - atoms[i].position.x();
                 float dy = atoms[j].position.y() - atoms[i].position.y();
                 float rSq = dx * dx + dy * dy;
-                if (rSq > CUTOFF_SQ) continue;
+                if (rSq > cutoffSq) continue;
 
                 float r = (float) Math.sqrt(rSq);
-                if (r < MIN_DIST) r = MIN_DIST;
+                if (r < minDist) r = minDist;
 
                 float invR = 1.0f / r;
-                float sigmaOverR = SIGMA * invR;
+                float sigmaOverR = sigma * invR;
                 float sigmaOverR2 = sigmaOverR * sigmaOverR;
                 float sigmaOverR6 = sigmaOverR2 * sigmaOverR2 * sigmaOverR2;
                 float sigmaOverR12 = sigmaOverR6 * sigmaOverR6;
-                potentialPairs += 4.0f * EPSILON * (sigmaOverR12 - sigmaOverR6);
+                potentialPairs += 4.0f * epsilon * (sigmaOverR12 - sigmaOverR6);
             }
         }
 
